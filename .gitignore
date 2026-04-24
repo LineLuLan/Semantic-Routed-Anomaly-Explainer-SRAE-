@@ -1,0 +1,62 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+
+# Testing / caches
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# ML model caches
+.cache/
+sentence_transformers_cache/
+~/.cache/torch/
+*.pkl
+*.joblib
+
+# Streamlit
+.streamlit/secrets.toml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data dumps
+*.sqlite
+*.db
+data/raw/
+data/processed/
+
+# Plans / scratch
+/plans/
+
+# Claude Code local settings
+.claude/
