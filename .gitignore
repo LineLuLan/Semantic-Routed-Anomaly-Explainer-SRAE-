@@ -60,3 +60,7 @@ data/processed/
 
 # Claude Code local settings
 .claude/
+
+# Local session journal and src file notes (not part of the shipped repo)
+phases/
+docs/
