@@ -223,3 +223,23 @@ streamlit run src/app/streamlit_app.py          # terminal 2
 1. **Solo, now:** Phase 1 on `feat/phase-1-db`, commit-per-step, push, open PR, merge.
 2. **Parallel option:** open 2 more terminals/CLIs after merge; each works an isolated branch from the matrix in §3.
 3. **Solo, last:** Phase 5 after 2/3/4 are all merged.
+
+---
+
+## 10. Architecture Pivot Note (2026-04-25)
+
+**Change:** Vector storage moved from `pgvector` (Postgres extension) to **ChromaDB PersistentClient** (local file-based, `.chroma/` directory).
+
+**Why:** PostgreSQL 18 native on Windows ships without pgvector binaries. Installing the extension requires either Visual Studio Build Tools (~2 GB) or a manual prebuilt-binary copy into `C:\Program Files\PostgreSQL\18\` with admin rights. For a local-first MVP, the install cost was not worth the architectural purity of "single Postgres heart".
+
+**What changed**
+- Phase 1 schema (`src/db/schema.sql`): `CREATE EXTENSION vector` and the `business_rules` table removed. Postgres now only holds `time_series_data`.
+- Phase 1 seed (`src/db/seed.py`): rule seeding stripped out. Time-series seeding unchanged.
+- Phase 3 owner (`src/router/`): now responsible for ChromaDB collection, rule list, and embedding push. Will add `src/router/rules.py` (rule catalog) + `src/router/seed_chroma.py` (one-shot seeder) + `src/router/semantic.py` (`SemanticRouter` class).
+- `requirements.txt`: `pgvector` → `chromadb>=0.5`. `sentence-transformers` stays — still used to encode rules and queries.
+
+**What did NOT change**
+- 5-phase pipeline, branch isolation, parallel-safety rules.
+- `SemanticRouter.route(text)` I/O contract — still returns `{rule_text, suggested_action, distance}`. Only the backend differs.
+- Embedding model and dimensions (`all-MiniLM-L6-v2`, 384 dims).
+- Business rules content (the same 6 playbooks).

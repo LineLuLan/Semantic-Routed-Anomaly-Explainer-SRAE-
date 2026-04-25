@@ -55,6 +55,9 @@ Thumbs.db
 data/raw/
 data/processed/
 
+# ChromaDB persistent dir (Phase 3 vector store)
+.chroma/
+
 # Plans / scratch
 /plans/
 
@@ -64,3 +67,6 @@ data/processed/
 # Local session journal and src file notes (not part of the shipped repo)
 phases/
 docs/
+CLAUDE.md
+PLAN.md
+BluePrint.md

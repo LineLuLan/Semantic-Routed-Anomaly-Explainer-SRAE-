@@ -40,3 +40,15 @@ Khác với các hệ thống rời rạc, SRAE sẽ tận dụng **PostgreSQL**
 
 ---
 **@Claude:** Confirm your understanding of this PostgreSQL-centric blueprint. Outline your development plan. DO NOT write code yet.
+
+---
+
+## ⚠️ Architecture Pivot (2026-04-25)
+
+**Vector storage moved from `pgvector` to `ChromaDB`.** PostgreSQL 18 on Windows did not ship pgvector binaries and the install cost (VS Build Tools or manual binary copy with admin rights) was not justified for a local MVP.
+
+The pipeline above still describes the original design intent. The actual implementation is hybrid:
+- **PostgreSQL** continues to own time-series data (Module 1 input).
+- **ChromaDB PersistentClient** (local `.chroma/` dir, owned by Phase 3) replaces pgvector for rule embeddings + cosine k-NN.
+
+`SemanticRouter.route()` keeps the same I/O contract — only the backend differs. See `PLAN.md` §10 for full pivot details.
