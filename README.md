@@ -396,6 +396,7 @@ build`); no GitHub Actions workflow yet.
 
 - [`BluePrint.md`](BluePrint.md) — original architectural intent (pre-pivot).
 - [`PLAN.md`](PLAN.md) — phased execution plan + ChromaDB pivot note (§10).
+- [`planning/v0.2-roadmap.md`](planning/v0.2-roadmap.md) — what's next for v0.2 with priorities and effort estimates.
 - [`PARALLEL_WORKFLOW.md`](PARALLEL_WORKFLOW.md) — `git worktree` workflow for running 2-3 Claude Code sessions in parallel without conflicts.
 - [`CLAUDE.md`](CLAUDE.md) — internal context loaded by Claude Code in this repo (gitignored, local-only).
 
