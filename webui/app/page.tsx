@@ -29,7 +29,10 @@ export default function Home() {
   const [pointsLoading, setPointsLoading] = useState(true);
   const [analysis, setAnalysis] = useState<AnalyzeResponse | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
+  // Default to mock = true; once /health confirms a Groq key is present,
+  // we flip to live. Without a key we stay on mock so /analyze never 500s.
   const [useMock, setUseMock] = useState(true);
+  const [mockTouched, setMockTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Initial: pull health + raw time-series for the chart.
@@ -41,6 +44,11 @@ export default function Home() {
         if (cancelled) return;
         setHealth(h);
         setPoints(t.points);
+        // If the user hasn't manually toggled, default to live Groq when
+        // configured so the first Analyze hits the real LLM.
+        if (!mockTouched) {
+          setUseMock(!h.groq_configured);
+        }
       } catch (err) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : String(err));
@@ -51,6 +59,8 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
+    // mockTouched intentionally excluded — health load happens once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const runAnalyze = useCallback(async () => {
@@ -114,10 +124,19 @@ export default function Home() {
             <input
               type="checkbox"
               checked={useMock}
-              onChange={(e) => setUseMock(e.target.checked)}
+              disabled={!health?.groq_configured && !mockTouched}
+              onChange={(e) => {
+                setMockTouched(true);
+                setUseMock(e.target.checked);
+              }}
               className="h-3.5 w-3.5 accent-[var(--color-primary)]"
             />
             Mock LLM (fast, deterministic)
+            {!useMock && health?.groq_configured && (
+              <span className="ml-1 rounded-full bg-indigo-500/15 px-1.5 py-0.5 text-[10px] tracking-wider text-indigo-300">
+                LIVE GROQ
+              </span>
+            )}
           </label>
         </div>
       </header>
