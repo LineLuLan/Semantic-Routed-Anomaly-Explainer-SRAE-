@@ -50,10 +50,13 @@ class AnomalyDetector:
                 .scalars()
                 .all()
             )
-        return pd.DataFrame(
+        df = pd.DataFrame(
             {"ts": r.ts, "metric_name": r.metric_name, "value": r.value}
             for r in rows
         )
+        if not df.empty:
+            df["ts"] = pd.to_datetime(df["ts"], utc=True)
+        return df
 
     @staticmethod
     def _features(df: pd.DataFrame) -> np.ndarray:
