@@ -1,0 +1,109 @@
+@import "tailwindcss";
+
+/*
+ * SRAE design system — "Dark Mode (OLED)" aesthetic
+ * (chosen via ui-ux-pro-max skill for SRE / observability dashboards).
+ *
+ * Palette: slate-900 background, amber primary (D97706), indigo accent
+ * (6366F1), red destructive (DC2626). Fonts: Fira Sans body + Fira Code
+ * mono. The whole UI is dark-only by design; we render dense, technical,
+ * non-marketing surfaces.
+ */
+
+:root {
+  --color-bg: #0f172a;            /* slate-900 */
+  --color-surface: #111c33;       /* one notch lighter than bg */
+  --color-surface-2: #1f1e27;     /* muted card */
+  --color-foreground: #e6eaf2;    /* off-white, easier than pure white */
+  --color-foreground-muted: #94a3b8;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-strong: rgba(255, 255, 255, 0.16);
+
+  --color-primary: #d97706;       /* amber-600 — Analyze button, primary CTA */
+  --color-primary-hover: #b45309; /* amber-700 */
+  --color-on-primary: #ffffff;
+
+  --color-accent: #6366f1;        /* indigo-500 — links, highlights */
+  --color-accent-hover: #4f46e5;
+
+  --color-success: #10b981;       /* emerald-500 — healthy ping */
+  --color-warning: #f59e0b;       /* amber-500 — moderate */
+  --color-danger: #dc2626;        /* red-600 — anomaly status */
+  --color-danger-soft: rgba(220, 38, 38, 0.15);
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+@theme inline {
+  --color-background: var(--color-bg);
+  --color-foreground: var(--color-foreground);
+  --color-muted: var(--color-foreground-muted);
+  --color-surface: var(--color-surface);
+  --color-surface-2: var(--color-surface-2);
+  --color-border: var(--color-border);
+  --color-border-strong: var(--color-border-strong);
+  --color-primary: var(--color-primary);
+  --color-primary-hover: var(--color-primary-hover);
+  --color-accent: var(--color-accent);
+  --color-success: var(--color-success);
+  --color-warning: var(--color-warning);
+  --color-danger: var(--color-danger);
+
+  --font-sans: var(--font-fira-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-fira-code), ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", "cv11";
+}
+
+/* Selection: amber on dark feels right for the brand */
+::selection {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+/* Scrollbar — keep it subtle */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Subtle background grain — gives the OLED surface a bit of life */
+.bg-grain {
+  background-image: radial-gradient(
+      circle at 20% 0%,
+      rgba(217, 119, 6, 0.06),
+      transparent 40%
+    ),
+    radial-gradient(circle at 90% 10%, rgba(99, 102, 241, 0.05), transparent 50%);
+}
