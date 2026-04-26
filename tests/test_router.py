@@ -48,3 +48,36 @@ def test_descriptive_late_night_query_clears_distance_gate(router) -> None:
 
     assert "bot scraping" in result["rule_text"].lower(), result["rule_text"]
     assert result["distance"] < 0.35, result["distance"]
+
+
+def test_route_returns_confidence_band(router) -> None:
+    result = router.route("Late-night traffic spike at 2 AM, possible bot crawling")
+    assert result["confidence"] in {"high", "med", "low"}
+
+
+def test_unrelated_query_routes_to_null(seeded_chroma) -> None:
+    """A query with no relation to any rule must surface as a null match
+    instead of being force-fit to the closest unrelated playbook."""
+    from src.router.semantic import SemanticRouter
+
+    # Aggressive threshold so anything off-topic falls below confidence.
+    router = SemanticRouter(persist_dir=seeded_chroma, min_distance=0.20)
+    result = router.route("the quick brown fox jumps over the lazy dog")
+
+    assert result["rule_text"] is None
+    assert result["suggested_action"] is None
+    assert result["distance"] > 0.20
+    assert result["confidence"] in {"med", "low"}
+
+
+def test_route_many_preserves_order(router) -> None:
+    queries = [
+        "Late-night traffic spike at 2 AM, possible bot crawling",
+        "Sales dropped to zero during the day, checkout looks broken",
+        "Error rate spiked after the deploy, dependencies look fine",
+    ]
+    results = router.route_many(queries)
+    assert len(results) == 3
+    # Each result keeps the v0.2 contract.
+    for r in results:
+        assert {"rule_text", "suggested_action", "distance", "confidence"} <= set(r)
