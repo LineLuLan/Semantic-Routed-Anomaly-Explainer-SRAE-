@@ -4,8 +4,8 @@ Exposes:
 - GET  /health    — liveness probe (Postgres + Chroma reachability).
 - POST /analyze   — run the full pipeline:
     detect anomalies (Phase 2)
-      → route each via SemanticRouter (Phase 3)
-        → explain via LLM Explainer (Phase 4)
+      → batch-route via SemanticRouter (Phase 3)
+        → explain via LLM Explainer (Phase 4, parallelized in live mode)
           → return list[AnalysisReport].
 - GET  /timeseries — raw rows for charts.
 
@@ -16,13 +16,14 @@ reused across requests.
 
 from __future__ import annotations
 
+from collections import Counter
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy import select
 
 from src.db.connection import TimeSeriesData, get_session, ping
@@ -36,9 +37,10 @@ class AnalysisReport(BaseModel):
     metric: str
     value: float
     status: str
-    rule_text: str
-    suggested_action: str
+    rule_text: str | None
+    suggested_action: str | None
     distance: float
+    confidence: str
     explanation: str
 
 
@@ -46,6 +48,7 @@ class AnalyzeResponse(BaseModel):
     total_anomalies: int
     returned: int
     mock_llm: bool
+    by_metric: dict[str, int]
     reports: list[AnalysisReport]
 
 
@@ -85,7 +88,7 @@ app = FastAPI(
     title="SRAE — Semantic-Routed Anomaly Explainer",
     description="Detect anomalies in time-series data, route to a business "
     "playbook via cosine similarity, and explain with an LLM.",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -112,10 +115,25 @@ def health() -> HealthResponse:
     )
 
 
+def _parse_iso(label: str, value: str | None) -> datetime | None:
+    if value is None:
+        return None
+    try:
+        # `fromisoformat` accepts "Z" since Python 3.11+.
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid ISO 8601 value for {label!r}: {value!r} ({exc})",
+        ) from exc
+
+
 @app.post("/analyze", response_model=AnalyzeResponse)
 def analyze(
     limit: int = Query(default=10, ge=1, le=100),
     mock: bool = Query(default=False, description="Use mock LLM (fast, deterministic)"),
+    since: str | None = Query(default=None, description="ISO 8601 lower bound"),
+    until: str | None = Query(default=None, description="ISO 8601 upper bound"),
 ) -> AnalyzeResponse:
     if app.state.router is None:
         raise HTTPException(
@@ -126,26 +144,38 @@ def analyze(
             ),
         )
 
-    anomalies = app.state.detector.detect()
+    since_dt = _parse_iso("since", since)
+    until_dt = _parse_iso("until", until)
+
+    anomalies = app.state.detector.detect(since=since_dt, until=until_dt)
     total = len(anomalies)
+    by_metric = dict(Counter(a["metric"] for a in anomalies))
     if not anomalies:
         return AnalyzeResponse(
-            total_anomalies=0, returned=0, mock_llm=mock, reports=[]
+            total_anomalies=0,
+            returned=0,
+            mock_llm=mock,
+            by_metric=by_metric,
+            reports=[],
         )
 
     # Sort newest first so the UI shows recent issues at the top.
     anomalies.sort(key=lambda a: a["timestamp"], reverse=True)
     selected = anomalies[:limit]
 
+    # 1× encode + 1× Chroma round-trip for the whole batch.
+    queries = [
+        f"Metric '{a['metric']}' reached {a['value']} at {a['timestamp']} ({a['status']})."
+        for a in selected
+    ]
+    rules = app.state.router.route_many(queries)
+
+    # Parallel Groq calls in live mode; in-process map in mock mode.
     explainer = Explainer(mock=mock)
+    explanations = explainer.explain_many(zip(selected, rules))
+
     reports: list[AnalysisReport] = []
-    for anomaly in selected:
-        query = (
-            f"Metric '{anomaly['metric']}' reached {anomaly['value']} at "
-            f"{anomaly['timestamp']} ({anomaly['status']})."
-        )
-        rule = app.state.router.route(query)
-        explanation = explainer.explain(anomaly, rule)
+    for anomaly, rule, explanation in zip(selected, rules, explanations):
         reports.append(
             AnalysisReport(
                 timestamp=anomaly["timestamp"],
@@ -155,6 +185,7 @@ def analyze(
                 rule_text=rule["rule_text"],
                 suggested_action=rule["suggested_action"],
                 distance=rule["distance"],
+                confidence=rule["confidence"],
                 explanation=explanation,
             )
         )
@@ -163,6 +194,7 @@ def analyze(
         total_anomalies=total,
         returned=len(reports),
         mock_llm=mock,
+        by_metric=by_metric,
         reports=reports,
     )
 
@@ -171,12 +203,21 @@ def analyze(
 def timeseries(
     metric: str | None = Query(default=None, description="Filter by metric name"),
     limit: int = Query(default=1000, ge=1, le=5000),
+    since: str | None = Query(default=None, description="ISO 8601 lower bound"),
+    until: str | None = Query(default=None, description="ISO 8601 upper bound"),
 ) -> TimeSeriesResponse:
+    since_dt = _parse_iso("since", since)
+    until_dt = _parse_iso("until", until)
+
     stmt = select(TimeSeriesData).order_by(
         TimeSeriesData.metric_name, TimeSeriesData.ts
     )
     if metric:
         stmt = stmt.where(TimeSeriesData.metric_name == metric)
+    if since_dt is not None:
+        stmt = stmt.where(TimeSeriesData.ts >= since_dt)
+    if until_dt is not None:
+        stmt = stmt.where(TimeSeriesData.ts <= until_dt)
     stmt = stmt.limit(limit)
 
     with get_session() as session:
@@ -197,7 +238,7 @@ def timeseries(
 def root() -> dict[str, Any]:
     return {
         "name": "SRAE API",
-        "version": "0.1.0",
+        "version": "0.2.0",
         "endpoints": ["/health", "/analyze", "/timeseries"],
         "ui": "http://localhost:3000",
     }

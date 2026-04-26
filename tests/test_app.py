@@ -56,10 +56,12 @@ def test_analyze_with_mock_llm_returns_reports(client: TestClient) -> None:
             "rule_text",
             "suggested_action",
             "distance",
+            "confidence",
             "explanation",
         }
         assert report["status"] == "anomaly"
         assert report["explanation"].startswith("[MOCK]")
+        assert report["confidence"] in {"high", "med", "low"}
 
 
 @pytest.mark.requires_db
@@ -83,6 +85,38 @@ def test_timeseries_returns_points(client: TestClient) -> None:
     for p in body["points"]:
         assert p["metric"] == "traffic"
         assert isinstance(p["value"], float)
+
+
+@pytest.mark.requires_db
+def test_analyze_reports_by_metric_breakdown(client: TestClient) -> None:
+    r = client.post("/analyze?mock=true&limit=100")
+    assert r.status_code == 200
+    body = r.json()
+    assert isinstance(body["by_metric"], dict)
+    assert sum(body["by_metric"].values()) == body["total_anomalies"]
+
+
+@pytest.mark.requires_db
+def test_timeseries_window_filter_narrows_results(client: TestClient) -> None:
+    full = client.get("/timeseries?metric=traffic&limit=500").json()
+    assert full["points"], "expected seed data"
+    midpoint = full["points"][len(full["points"]) // 2]["timestamp"]
+
+    r = client.get(
+        "/timeseries",
+        params={"metric": "traffic", "limit": 500, "since": midpoint},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert 0 < len(body["points"]) < len(full["points"])
+    for p in body["points"]:
+        assert p["timestamp"] >= midpoint
+
+
+def test_analyze_rejects_bad_iso(client: TestClient) -> None:
+    r = client.post("/analyze?mock=true&since=not-a-date")
+    assert r.status_code == 400
+    assert "since" in r.json()["detail"]
 
 
 def test_cors_headers_for_localhost_3000(client: TestClient) -> None:
