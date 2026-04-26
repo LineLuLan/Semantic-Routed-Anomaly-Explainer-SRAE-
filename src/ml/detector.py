@@ -14,6 +14,7 @@ that satisfies the locked Phase 2 I/O contract:
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 import numpy as np
@@ -80,15 +81,31 @@ class AnomalyDetector:
             self.models[str(metric)] = model
         return self
 
-    def detect(self, df: Optional[pd.DataFrame] = None) -> list[dict]:
-        """Return anomalies in the contract shape. Trains on first call."""
+    def detect(
+        self,
+        df: Optional[pd.DataFrame] = None,
+        since: Optional[datetime] = None,
+        until: Optional[datetime] = None,
+    ) -> list[dict]:
+        """Return anomalies in the contract shape. Trains on first call.
+
+        Models are still fit on the full history (so the IsolationForest
+        learns the underlying distribution) but the *returned* anomalies
+        are scoped to the [since, until] window when supplied.
+        """
         if df is None:
             df = self.load()
         if not self.models:
             self.fit(df)
 
+        scoped = df
+        if since is not None:
+            scoped = scoped[scoped["ts"] >= pd.to_datetime(since, utc=True)]
+        if until is not None:
+            scoped = scoped[scoped["ts"] <= pd.to_datetime(until, utc=True)]
+
         anomalies: list[dict] = []
-        for metric, group in df.groupby("metric_name"):
+        for metric, group in scoped.groupby("metric_name"):
             metric_key = str(metric)
             model = self.models.get(metric_key)
             if model is None:
