@@ -67,6 +67,36 @@ def test_mock_does_not_require_groq_key() -> None:
     assert explainer._client is None
 
 
+def test_mock_explain_handles_null_rule() -> None:
+    """When the router returns no match the mock report must still be
+    informative and explicitly call out manual triage."""
+    explainer = Explainer(mock=True)
+    null_rule = {
+        "rule_text": None,
+        "suggested_action": None,
+        "distance": 0.78,
+        "confidence": "low",
+    }
+    report = explainer.explain(ANOMALY, null_rule)
+
+    assert "manual triage" in report.lower()
+    assert "0.78" in report or "0.7" in report
+
+
+def test_explain_many_mock_preserves_order() -> None:
+    explainer = Explainer(mock=True)
+    null_rule = {"rule_text": None, "suggested_action": None, "distance": 0.9, "confidence": "low"}
+    pairs = [
+        (ANOMALY, RULE),
+        (ANOMALY, null_rule),
+        (ANOMALY, RULE),
+    ]
+    out = explainer.explain_many(pairs)
+    assert len(out) == 3
+    assert "manual triage" in out[1].lower()
+    assert "manual triage" not in out[0].lower()
+
+
 def test_real_mode_without_key_raises() -> None:
     if settings.has_groq_key:
         pytest.skip("GROQ_API_KEY is configured; cannot test the missing-key branch.")
