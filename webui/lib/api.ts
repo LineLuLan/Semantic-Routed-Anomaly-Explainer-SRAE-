@@ -4,14 +4,17 @@
  * Mirrors the Pydantic models in src/app/api.py. Keep these in sync.
  */
 
+export type Confidence = "high" | "med" | "low";
+
 export type AnalysisReport = {
   timestamp: string;
   metric: string;
   value: number;
   status: string;
-  rule_text: string;
-  suggested_action: string;
+  rule_text: string | null;
+  suggested_action: string | null;
   distance: number;
+  confidence: Confidence;
   explanation: string;
 };
 
@@ -19,6 +22,7 @@ export type AnalyzeResponse = {
   total_anomalies: number;
   returned: number;
   mock_llm: boolean;
+  by_metric: Record<string, number>;
   reports: AnalysisReport[];
 };
 
@@ -68,23 +72,31 @@ export async function getHealth(): Promise<HealthResponse> {
   return request<HealthResponse>("/health");
 }
 
-export async function getTimeSeries(
-  metric?: string,
-  limit = 1000
-): Promise<TimeSeriesResponse> {
-  const params = new URLSearchParams({ limit: String(limit) });
-  if (metric) params.set("metric", metric);
+export async function getTimeSeries(opts?: {
+  metric?: string;
+  limit?: number;
+  since?: string;
+  until?: string;
+}): Promise<TimeSeriesResponse> {
+  const params = new URLSearchParams({ limit: String(opts?.limit ?? 1000) });
+  if (opts?.metric) params.set("metric", opts.metric);
+  if (opts?.since) params.set("since", opts.since);
+  if (opts?.until) params.set("until", opts.until);
   return request<TimeSeriesResponse>(`/timeseries?${params}`);
 }
 
 export async function analyze(opts?: {
   limit?: number;
   mock?: boolean;
+  since?: string;
+  until?: string;
 }): Promise<AnalyzeResponse> {
   const params = new URLSearchParams({
     limit: String(opts?.limit ?? 10),
     mock: String(opts?.mock ?? false),
   });
+  if (opts?.since) params.set("since", opts.since);
+  if (opts?.until) params.set("until", opts.until);
   return request<AnalyzeResponse>(`/analyze?${params}`, {
     method: "POST",
   });

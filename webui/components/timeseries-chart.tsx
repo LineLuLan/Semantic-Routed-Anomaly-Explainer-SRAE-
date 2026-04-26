@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import {
   CartesianGrid,
   Legend,
@@ -53,7 +54,17 @@ export function TimeSeriesChart({
   points: TimeSeriesPoint[];
   anomalies: AnalysisReport[];
 }) {
-  const { rows, metrics } = pivot(points);
+  const { rows, metrics } = useMemo(() => pivot(points), [points]);
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+
+  const toggleMetric = (m: string) => {
+    setHidden((prev) => {
+      const next = new Set(prev);
+      if (next.has(m)) next.delete(m);
+      else next.add(m);
+      return next;
+    });
+  };
 
   if (rows.length === 0) {
     return (
@@ -63,8 +74,10 @@ export function TimeSeriesChart({
     );
   }
 
+  const visibleAnomalies = anomalies.filter((a) => !hidden.has(a.metric));
+
   return (
-    <div className="h-72 w-full">
+    <div className="h-80 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart
           data={rows}
@@ -99,6 +112,24 @@ export function TimeSeriesChart({
               fontFamily: "var(--font-fira-code)",
               fontSize: 12,
               paddingTop: 8,
+              cursor: "pointer",
+            }}
+            onClick={(o) => {
+              const value = (o as { value?: string })?.value;
+              if (value) toggleMetric(value);
+            }}
+            formatter={(value: string) => {
+              const isHidden = hidden.has(value);
+              return (
+                <span
+                  style={{
+                    color: isHidden ? "#475569" : "#94a3b8",
+                    textDecoration: isHidden ? "line-through" : "none",
+                  }}
+                >
+                  {value}
+                </span>
+              );
             }}
           />
           {metrics.map((m) => (
@@ -111,21 +142,26 @@ export function TimeSeriesChart({
               dot={false}
               activeDot={{ r: 4 }}
               isAnimationActive={false}
+              hide={hidden.has(m)}
             />
           ))}
-          {anomalies.map((a, i) => (
+          {visibleAnomalies.map((a, i) => (
             <ReferenceDot
               key={`${a.metric}-${a.timestamp}-${i}`}
               x={a.timestamp}
               y={a.value}
               r={5}
-              fill="#dc2626"
+              fill={a.confidence === "low" ? "#94a3b8" : "#dc2626"}
               stroke="#fff"
               strokeWidth={1.5}
+              ifOverflow="extendDomain"
             />
           ))}
         </LineChart>
       </ResponsiveContainer>
+      <p className="mt-1 text-center text-[10px] font-mono uppercase tracking-widest text-[var(--color-foreground-muted)]">
+        click legend to toggle a metric · grey dot = unmatched anomaly
+      </p>
     </div>
   );
 }

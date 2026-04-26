@@ -1,7 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Activity, AlertTriangle, Loader2, Play, Server, Sparkles } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Activity,
+  AlertTriangle,
+  Loader2,
+  Play,
+  Server,
+  Sparkles,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -23,17 +30,21 @@ import {
   type TimeSeriesPoint,
 } from "@/lib/api";
 
+const LIMIT_OPTIONS = [5, 10, 25, 50] as const;
+
 export default function Home() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [points, setPoints] = useState<TimeSeriesPoint[]>([]);
   const [pointsLoading, setPointsLoading] = useState(true);
   const [analysis, setAnalysis] = useState<AnalyzeResponse | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [limit, setLimit] = useState<number>(10);
   // Default to mock = true; once /health confirms a Groq key is present,
   // we flip to live. Without a key we stay on mock so /analyze never 500s.
   const [useMock, setUseMock] = useState(true);
   const [mockTouched, setMockTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [elapsedMs, setElapsedMs] = useState<number | null>(null);
 
   // Initial: pull health + raw time-series for the chart.
   useEffect(() => {
@@ -44,8 +55,6 @@ export default function Home() {
         if (cancelled) return;
         setHealth(h);
         setPoints(t.points);
-        // If the user hasn't manually toggled, default to live Groq when
-        // configured so the first Analyze hits the real LLM.
         if (!mockTouched) {
           setUseMock(!h.groq_configured);
         }
@@ -59,22 +68,49 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-    // mockTouched intentionally excluded — health load happens once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const runAnalyze = useCallback(async () => {
     setAnalyzing(true);
     setError(null);
+    const started = performance.now();
     try {
-      const result = await analyze({ limit: 10, mock: useMock });
+      const result = await analyze({ limit, mock: useMock });
       setAnalysis(result);
+      setElapsedMs(Math.round(performance.now() - started));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setAnalyzing(false);
     }
-  }, [useMock]);
+  }, [useMock, limit]);
+
+  // Keyboard: Cmd/Ctrl+Enter triggers Analyze, Cmd/Ctrl+M toggles mock.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const cmd = e.metaKey || e.ctrlKey;
+      if (!cmd) return;
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (!analyzing) runAnalyze();
+      } else if (e.key.toLowerCase() === "m") {
+        e.preventDefault();
+        if (health?.groq_configured) {
+          setMockTouched(true);
+          setUseMock((v) => !v);
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [analyzing, runAnalyze, health?.groq_configured]);
+
+  const totalPointsByMetric = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const p of points) m[p.metric] = (m[p.metric] ?? 0) + 1;
+    return m;
+  }, [points]);
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-10 px-4 py-10 sm:px-6 lg:px-8">
@@ -83,29 +119,46 @@ export default function Home() {
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <span className="font-mono text-xs uppercase tracking-[0.18em] text-[var(--color-accent)]">
-              SRAE · v0.1
+              SRAE · v0.2
             </span>
             <span className="text-xs text-[var(--color-foreground-muted)]">
               Semantic-Routed Anomaly Explainer
             </span>
           </div>
           <h1 className="font-mono text-4xl font-semibold leading-tight tracking-tight text-[var(--color-foreground)] sm:text-5xl">
-            Detect. Route. <span className="text-[var(--color-primary)]">Explain.</span>
+            Detect. Route.{" "}
+            <span className="text-[var(--color-primary)]">Explain.</span>
           </h1>
           <p className="max-w-xl text-sm leading-relaxed text-[var(--color-foreground-muted)]">
-            IsolationForest catches the dips and spikes, ChromaDB cosine search picks
-            the right playbook, and an LLM writes a one-paragraph on-call report.
-            One click. Three pipelines.
+            IsolationForest catches the dips and spikes, ChromaDB cosine search
+            picks the right playbook, and an LLM writes a one-paragraph on-call
+            report. Confidence-aware so noisy matches surface as &ldquo;manual
+            triage&rdquo; instead of pretending.
           </p>
         </div>
 
-        <div className="flex flex-col gap-2.5">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-col items-start gap-2.5 lg:items-end">
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-1.5 rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-surface-2)] px-2.5 py-1.5 font-mono text-xs text-[var(--color-foreground-muted)]">
+              limit
+              <select
+                value={limit}
+                onChange={(e) => setLimit(Number(e.target.value))}
+                className="bg-transparent text-[var(--color-foreground)] outline-none"
+              >
+                {LIMIT_OPTIONS.map((n) => (
+                  <option key={n} value={n} className="bg-[var(--color-surface)]">
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
             <Button
               onClick={runAnalyze}
               disabled={analyzing}
               size="lg"
               className="min-w-[180px]"
+              title="Cmd/Ctrl+Enter"
             >
               {analyzing ? (
                 <>
@@ -137,6 +190,9 @@ export default function Home() {
                 LIVE GROQ
               </span>
             )}
+            <span className="ml-1 hidden text-[10px] tracking-wider text-[var(--color-foreground-muted)]/70 sm:inline">
+              · ⌘/Ctrl+Enter to run · ⌘/Ctrl+M to toggle
+            </span>
           </label>
         </div>
       </header>
@@ -166,7 +222,7 @@ export default function Home() {
             </CardTitle>
             <CardSubtitle>
               traffic · sales · error_rate · 168 hourly points each ·
-              red dots = detected anomalies
+              red dots = matched anomalies · grey dots = low-confidence
             </CardSubtitle>
           </div>
         </CardHeader>
@@ -184,7 +240,7 @@ export default function Home() {
 
       {/* Reports */}
       <section className="space-y-4">
-        <div className="flex items-end justify-between border-b border-[var(--color-border)] pb-3">
+        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[var(--color-border)] pb-3">
           <div>
             <h2 className="font-mono text-lg font-semibold text-[var(--color-foreground)]">
               Anomaly reports
@@ -193,16 +249,29 @@ export default function Home() {
               {analysis
                 ? `Showing ${analysis.returned} of ${analysis.total_anomalies} flagged anomalies${
                     analysis.mock_llm ? " · mock LLM" : " · live LLM"
-                  }`
+                  }${elapsedMs !== null ? ` · ${elapsedMs} ms` : ""}`
                 : "Click Analyze to run the pipeline."}
             </p>
           </div>
-          {analysis && (
-            <Badge tone={analysis.mock_llm ? "neutral" : "info"}>
-              <Sparkles className="h-3 w-3" />
-              {analysis.mock_llm ? "mock" : "groq"}
-            </Badge>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {analysis &&
+              Object.entries(analysis.by_metric)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([metric, count]) => (
+                  <Badge key={metric} tone="neutral">
+                    {metric}: {count}
+                    {totalPointsByMetric[metric]
+                      ? ` / ${totalPointsByMetric[metric]}`
+                      : ""}
+                  </Badge>
+                ))}
+            {analysis && (
+              <Badge tone={analysis.mock_llm ? "neutral" : "info"}>
+                <Sparkles className="h-3 w-3" />
+                {analysis.mock_llm ? "mock" : "groq"}
+              </Badge>
+            )}
+          </div>
         </div>
 
         {analyzing && <AnalyzingSkeleton />}

@@ -6,9 +6,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowUpRight, BookOpen, Sparkles } from "lucide-react";
-import type { AnalysisReport } from "@/lib/api";
-import { formatNumber, formatTimestamp } from "@/lib/utils";
+import { ArrowUpRight, BookOpen, HelpCircle, Sparkles } from "lucide-react";
+import type { AnalysisReport, Confidence } from "@/lib/api";
+import { cn, formatNumber, formatTimestamp } from "@/lib/utils";
 
 const METRIC_TONE: Record<string, "info" | "success" | "warning"> = {
   traffic: "info",
@@ -16,47 +16,84 @@ const METRIC_TONE: Record<string, "info" | "success" | "warning"> = {
   error_rate: "warning",
 };
 
+const CONFIDENCE_TONE: Record<Confidence, "success" | "warning" | "neutral"> = {
+  high: "success",
+  med: "warning",
+  low: "neutral",
+};
+
+const CONFIDENCE_LABEL: Record<Confidence, string> = {
+  high: "high confidence",
+  med: "medium confidence",
+  low: "low confidence",
+};
+
 export function AnomalyCard({ report }: { report: AnalysisReport }) {
+  const matched = Boolean(report.rule_text && report.suggested_action);
+
   return (
-    <Card>
+    <Card className={cn(!matched && "border-dashed opacity-90")}>
       <CardHeader>
         <div className="flex flex-col gap-1.5">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Badge tone={METRIC_TONE[report.metric] ?? "neutral"}>
               {report.metric}
             </Badge>
             <Badge tone="danger">{report.status}</Badge>
+            <Badge tone={CONFIDENCE_TONE[report.confidence]}>
+              {CONFIDENCE_LABEL[report.confidence]}
+            </Badge>
             <span className="font-mono text-xs text-[var(--color-foreground-muted)]">
               cos d={report.distance.toFixed(3)}
             </span>
           </div>
           <CardTitle className="font-mono">
-            value <span className="text-[var(--color-warning)]">{formatNumber(report.value)}</span>
+            value{" "}
+            <span className="text-[var(--color-warning)]">
+              {formatNumber(report.value)}
+            </span>
           </CardTitle>
           <CardSubtitle>{formatTimestamp(report.timestamp)}</CardSubtitle>
         </div>
       </CardHeader>
 
       <CardBody className="space-y-4">
-        <section>
-          <h4 className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--color-accent)]">
-            <BookOpen className="h-3.5 w-3.5" />
-            Matched playbook
-          </h4>
-          <p className="text-sm leading-relaxed text-[var(--color-foreground)]">
-            {report.rule_text}
-          </p>
-        </section>
+        {matched ? (
+          <>
+            <section>
+              <h4 className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--color-accent)]">
+                <BookOpen className="h-3.5 w-3.5" />
+                Matched playbook
+              </h4>
+              <p className="text-sm leading-relaxed text-[var(--color-foreground)]">
+                {report.rule_text}
+              </p>
+            </section>
 
-        <section>
-          <h4 className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--color-warning)]">
-            <ArrowUpRight className="h-3.5 w-3.5" />
-            Suggested action
-          </h4>
-          <p className="text-sm leading-relaxed text-[var(--color-foreground)]">
-            {report.suggested_action}
-          </p>
-        </section>
+            <section>
+              <h4 className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--color-warning)]">
+                <ArrowUpRight className="h-3.5 w-3.5" />
+                Suggested action
+              </h4>
+              <p className="text-sm leading-relaxed text-[var(--color-foreground)]">
+                {report.suggested_action}
+              </p>
+            </section>
+          </>
+        ) : (
+          <section>
+            <h4 className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--color-foreground-muted)]">
+              <HelpCircle className="h-3.5 w-3.5" />
+              No playbook match
+            </h4>
+            <p className="text-sm leading-relaxed text-[var(--color-foreground-muted)]">
+              Cosine distance{" "}
+              <span className="font-mono">{report.distance.toFixed(3)}</span>{" "}
+              is above the confidence threshold — no rule was returned.
+              This anomaly needs manual triage.
+            </p>
+          </section>
+        )}
 
         <section>
           <h4 className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--color-foreground-muted)]">
