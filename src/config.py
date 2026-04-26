@@ -49,7 +49,9 @@ def load_settings() -> Settings:
             "postgresql+psycopg2://postgres:postgres@localhost:5432/srae",
         ),
         groq_api_key=os.getenv("GROQ_API_KEY", ""),
-        groq_model=os.getenv("GROQ_MODEL", "llama3-8b-8192"),
+        # `llama3-8b-8192` was decommissioned by Groq — keep the default in
+        # sync with `.env.example` so a missing GROQ_MODEL doesn't 400.
+        groq_model=os.getenv("GROQ_MODEL", "llama-3.1-8b-instant"),
         embedding_model=os.getenv(
             "EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
         ),
